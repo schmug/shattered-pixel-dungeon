@@ -26,7 +26,9 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Electricity;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Freezing;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Bat;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Crab;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Guard;
@@ -40,6 +42,9 @@ import com.watabou.utils.BArray;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.PathFinder;
 import com.watabou.utils.Random;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public abstract class ChampionEnemy extends Buff {
 
@@ -91,19 +96,30 @@ public abstract class ChampionEnemy extends Buff {
 		immunities.add(AllyBuff.class);
 	}
 
+	@SuppressWarnings("unchecked")
+	public static final Class<? extends ChampionEnemy>[] POOL = new Class[]{
+			Blazing.class, Projecting.class, AntiMagic.class, Giant.class, Blessed.class, Growing.class,
+			Fanatic.class, Cursed.class, StoneSkin.class, ExtraFast.class,
+			LightningEnchanted.class, ColdEnchanted.class, MagicResistant.class,
+			SpectralHit.class, ManaBurn.class, Vampiric.class
+	};
+
 	public static void rollForChampion(Mob m){
 		Dungeon.mobsToChampion--;
 
 		//we roll for a champion enemy even if we aren't spawning one to ensure that
 		//mobsToChampion does not affect levelgen RNG (number of calls to Random.Int() is constant)
-		Class<?extends ChampionEnemy> buffCls;
-		switch (Random.Int(6)){
-			case 0: default:    buffCls = Blazing.class;      break;
-			case 1:             buffCls = Projecting.class;   break;
-			case 2:             buffCls = AntiMagic.class;    break;
-			case 3:             buffCls = Giant.class;        break;
-			case 4:             buffCls = Blessed.class;      break;
-			case 5:             buffCls = Growing.class;      break;
+		//roll: 1 modifier 75%, 2 modifiers 20%, 3 modifiers 5%
+		float countRoll = Random.Float();
+		int count;
+		if (countRoll < 0.05f) count = 3;
+		else if (countRoll < 0.25f) count = 2;
+		else count = 1;
+
+		ArrayList<Class<? extends ChampionEnemy>> pick = new ArrayList<>(Arrays.asList(POOL));
+		ArrayList<Class<? extends ChampionEnemy>> chosen = new ArrayList<>();
+		for (int i = 0; i < count && !pick.isEmpty(); i++) {
+			chosen.add(pick.remove(Random.Int(pick.size())));
 		}
 
 		if (Dungeon.mobsToChampion <= 0 && Dungeon.isChallenged(Challenges.CHAMPION_ENEMIES)) {
@@ -114,7 +130,9 @@ public abstract class ChampionEnemy extends Buff {
 			if (m instanceof Guard && Dungeon.scalingDepth() <= 7) return;
 			if (m instanceof Bat   && Dungeon.scalingDepth() <= 9) return;
 
-			Buff.affect(m, buffCls);
+			for (Class<? extends ChampionEnemy> cls : chosen) {
+				Buff.affect(m, cls);
+			}
 			//numbers of mobs until a champion scales from 1/8 to 1/6 as depths increases
 			Dungeon.mobsToChampion += 8 - Math.min(20, Dungeon.scalingDepth()-1)/10f;
 			if (m.state != m.PASSIVE) {
@@ -300,6 +318,158 @@ public abstract class ChampionEnemy extends Buff {
 		public void restoreFromBundle(Bundle bundle) {
 			super.restoreFromBundle(bundle);
 			multiplier = bundle.getFloat(MULTIPLIER);
+		}
+	}
+
+	public static class Fanatic extends ChampionEnemy {
+		{
+			color = 0xFF3333;
+			rays = 5;
+		}
+
+		@Override
+		public float meleeDamageFactor() {
+			return 1.4f;
+		}
+
+		@Override
+		public float evasionAndAccuracyFactor() {
+			return 1.25f;
+		}
+	}
+
+	public static class Cursed extends ChampionEnemy {
+		{
+			color = 0x6611AA;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			Buff.affect(enemy, Weakness.class, 4f);
+		}
+	}
+
+	public static class StoneSkin extends ChampionEnemy {
+		{
+			color = 0x888899;
+			rays = 6;
+		}
+
+		@Override
+		public float damageTakenFactor() {
+			return 0.35f;
+		}
+	}
+
+	public static class ExtraFast extends ChampionEnemy {
+		{
+			color = 0x55FFAA;
+			rays = 5;
+		}
+
+		@Override
+		public boolean act() {
+			//ExtraFast acts at 1.5x speed by spending less time
+			spend(-TICK / 2f);
+			return super.act();
+		}
+
+		@Override
+		public float evasionAndAccuracyFactor() {
+			return 1.5f;
+		}
+	}
+
+	public static class LightningEnchanted extends ChampionEnemy {
+		{
+			color = 0x99CCFF;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			GameScene.add(Blob.seed(enemy.pos, 2, Electricity.class));
+		}
+	}
+
+	public static class ColdEnchanted extends ChampionEnemy {
+		{
+			color = 0xAAEEFF;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			Buff.affect(enemy, Chill.class, 3f);
+		}
+
+		@Override
+		public void detach() {
+			if (target.flying || !Dungeon.level.pit[target.pos]) {
+				for (int i : PathFinder.NEIGHBOURS9) {
+					if (!Dungeon.level.solid[target.pos + i]) {
+						GameScene.add(Blob.seed(target.pos + i, 2, Freezing.class));
+					}
+				}
+			}
+			super.detach();
+		}
+	}
+
+	public static class MagicResistant extends ChampionEnemy {
+		{
+			color = 0x00AAFF;
+			rays = 6;
+		}
+
+		{
+			immunities.addAll(com.shatteredpixel.shatteredpixeldungeon.items.armor.glyphs.AntiMagic.RESISTS);
+		}
+
+		@Override
+		public float damageTakenFactor() {
+			return 0.7f;
+		}
+	}
+
+	public static class SpectralHit extends ChampionEnemy {
+		{
+			color = 0xCCAAFF;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			//random elemental flavour: 50% burn, 50% chill
+			if (Random.Int(2) == 0) Buff.affect(enemy, Burning.class).reignite(enemy);
+			else Buff.affect(enemy, Chill.class, 2f);
+		}
+	}
+
+	public static class ManaBurn extends ChampionEnemy {
+		{
+			color = 0x3366AA;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			Buff.affect(enemy, Hex.class, 5f);
+		}
+	}
+
+	public static class Vampiric extends ChampionEnemy {
+		{
+			color = 0x550000;
+			rays = 5;
+		}
+
+		@Override
+		public void onAttackProc(Char enemy) {
+			//heal a fraction of victim's remaining HP
+			int heal = Math.max(1, target.HT / 25);
+			target.HP = Math.min(target.HT, target.HP + heal);
 		}
 	}
 
