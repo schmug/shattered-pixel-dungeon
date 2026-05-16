@@ -24,6 +24,12 @@ tasks.register('debug', JavaExec) {
     systemProperty 'Specification-Version', appVersionName + "-INDEV"
     systemProperty 'Implementation-Version', appVersionCode
 
+    //forward the debug fast-start property to the forked game JVM when set
+    //e.g. ./gradlew desktop:debug -Dspd.debugStart=11
+    if (System.getProperty('spd.debugStart') != null) {
+        systemProperty 'spd.debugStart', System.getProperty('spd.debugStart')
+    }
+
     if (osName.contains('mac')) {
         jvmArgs '-XstartOnFirstThread'
     }

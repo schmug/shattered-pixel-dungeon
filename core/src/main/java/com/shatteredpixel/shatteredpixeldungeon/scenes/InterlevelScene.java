@@ -29,11 +29,15 @@ import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
 import com.shatteredpixel.shatteredpixeldungeon.Statistics;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.effects.ShadowBox;
+import com.shatteredpixel.shatteredpixeldungeon.items.Generator;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack;
+import com.shatteredpixel.shatteredpixeldungeon.items.armor.Armor;
 import com.shatteredpixel.shatteredpixeldungeon.items.artifacts.SkeletonKey;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.MeleeWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Document;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
@@ -619,12 +623,83 @@ public class InterlevelScene extends PixelScene {
 
 	}
 
+	//Parses the spd.debugStart system property into a target start depth.
+	// unset/blank -> 0 (disabled), "true" -> 6 (default), or an explicit depth.
+	// Result is clamped to the regular dungeon range [2, 26].
+	private static int debugStartDepth() {
+		String prop = System.getProperty("spd.debugStart");
+		if (prop == null || prop.trim().isEmpty()) {
+			return 0;
+		}
+		prop = prop.trim();
+		int depth;
+		if (prop.equalsIgnoreCase("true")) {
+			depth = 6;
+		} else {
+			try {
+				depth = Integer.parseInt(prop);
+			} catch (NumberFormatException e) {
+				return 0;
+			}
+		}
+		if (depth < 2)  depth = 2;
+		if (depth > 26) depth = 26;
+		return depth;
+	}
+
+	//Debug-only: gives the fast-started hero a depth-appropriate, upgraded and
+	// uncursed weapon + armor (and matching STR) so they aren't one-shot before
+	// reaching test content.
+	// Generator picks tiers from Dungeon.depth, so this must run after depth is set.
+	// Equips by direct assignment (not doEquip) because the hero sprite/level
+	// don't exist yet at this point in init.
+	private static void equipDebugGear(Hero hero, int depth) {
+		int upgrades = Math.max(1, depth / 3);
+
+		MeleeWeapon w = Generator.randomWeapon();
+		w.cursed = false;
+		w.upgrade(upgrades);
+		w.identify();
+		hero.belongings.weapon = w;
+		w.activate(hero);
+
+		Armor a = Generator.randomArmor();
+		a.cursed = false;
+		a.upgrade(upgrades);
+		a.identify();
+		hero.belongings.armor = a;
+		a.activate(hero);
+
+		//STR is only ever raised by Potions of Strength (~2 per 5-floor chapter),
+		// never by leveling, so a fast-started hero would be stuck at STARTING_STR
+		// and badly encumbered by tier-appropriate gear. Approximate the STR a
+		// normal playthrough would have here (~1 potion per 2 floors), and ensure
+		// it at least meets the equipped gear's requirement so there's no penalty.
+		int playthroughSTR = Hero.STARTING_STR + (depth - 1) / 2;
+		hero.STR = Math.max(hero.STR, Math.max(playthroughSTR,
+				Math.max(w.STRReq(), a.STRReq())));
+	}
+
 	private void descend() throws IOException {
 
 		if (Dungeon.hero == null) {
 			Mob.clearHeldAllies();
 			Dungeon.init();
 			GameLog.wipe();
+
+			//Debug-only fast-start: the spd.debugStart system property jumps a new game
+			// to a later depth (and scales the hero to roughly match) so deeper content
+			// like affixed drops and champion mobs can be tested without a full playthrough.
+			if (DeviceCompat.isDebug()){
+				int debugDepth = debugStartDepth();
+				if (debugDepth > 0){
+					Dungeon.depth = debugDepth;
+					while (Dungeon.hero.lvl < debugDepth && Dungeon.hero.lvl < Hero.MAX_LEVEL){
+						Dungeon.hero.earnExp(Dungeon.hero.maxExp(), Hero.class);
+					}
+					equipDebugGear(Dungeon.hero, debugDepth);
+				}
+			}
 
 			//When debugging, we may start a game at a later depth to quickly test something
 			// if this happens, the games quickly generates all prior levels on branch 0 first,
