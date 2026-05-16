@@ -70,6 +70,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.MeleeWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.RunicBlade;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Scimitar;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.suffixes.Suffix;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.ItemSprite;
@@ -123,6 +124,7 @@ abstract public class Weapon extends KindOfWeapon {
 	protected float availableUsesToID = usesToID()/2f;
 	
 	public Enchantment enchantment;
+	public Suffix suffix;
 	public boolean enchantHardened = false;
 	public boolean curseInfusionBonus = false;
 	public boolean masteryPotionBonus = false;
@@ -173,6 +175,10 @@ abstract public class Weapon extends KindOfWeapon {
 				}
 			}
 
+			if (suffix != null && defender.isAlive() && !becameAlly){
+				damage = suffix.proc(this, attacker, defender, damage);
+			}
+
 			if (attacker instanceof Hero && isEquipped((Hero) attacker) &&
 					attacker.buff(Smite.SmiteTracker.class) != null && !becameAlly){
 				defender.damage(Smite.bonusDmg((Hero) attacker, defender), Smite.INSTANCE);
@@ -220,6 +226,7 @@ abstract public class Weapon extends KindOfWeapon {
 	private static final String USES_LEFT_TO_ID = "uses_left_to_id";
 	private static final String AVAILABLE_USES  = "available_uses";
 	private static final String ENCHANTMENT	    = "enchantment";
+	private static final String SUFFIX			= "suffix";
 	private static final String ENCHANT_HARDENED = "enchant_hardened";
 	private static final String CURSE_INFUSION_BONUS = "curse_infusion_bonus";
 	private static final String MASTERY_POTION_BONUS = "mastery_potion_bonus";
@@ -231,6 +238,7 @@ abstract public class Weapon extends KindOfWeapon {
 		bundle.put( USES_LEFT_TO_ID, usesLeftToID );
 		bundle.put( AVAILABLE_USES, availableUsesToID );
 		bundle.put( ENCHANTMENT, enchantment );
+		bundle.put( SUFFIX, suffix );
 		bundle.put( ENCHANT_HARDENED, enchantHardened );
 		bundle.put( CURSE_INFUSION_BONUS, curseInfusionBonus );
 		bundle.put( MASTERY_POTION_BONUS, masteryPotionBonus );
@@ -243,6 +251,7 @@ abstract public class Weapon extends KindOfWeapon {
 		usesLeftToID = bundle.getFloat( USES_LEFT_TO_ID );
 		availableUsesToID = bundle.getFloat( AVAILABLE_USES );
 		enchantment = (Enchantment)bundle.get( ENCHANTMENT );
+		suffix = (Suffix)bundle.get( SUFFIX );
 		enchantHardened = bundle.getBoolean( ENCHANT_HARDENED );
 		curseInfusionBonus = bundle.getBoolean( CURSE_INFUSION_BONUS );
 		masteryPotionBonus = bundle.getBoolean( MASTERY_POTION_BONUS );
@@ -408,11 +417,21 @@ abstract public class Weapon extends KindOfWeapon {
 	public String name() {
 		if (isEquipped(Dungeon.hero) && !hasCurseEnchant() && Dungeon.hero.buff(HolyWeapon.HolyWepBuff.class) != null
 			&& (Dungeon.hero.subClass != HeroSubClass.PALADIN || enchantment == null)){
-				return Messages.get(HolyWeapon.class, "ench_name", super.name());
+				return decorateWithSuffix(Messages.get(HolyWeapon.class, "ench_name", super.name()));
 			} else {
-				return enchantment != null && (cursedKnown || !enchantment.curse()) ? enchantment.name(super.name()) : super.name();
-
+				String base = super.name();
+				if (enchantment != null && (cursedKnown || !enchantment.curse())) {
+					base = enchantment.name(base);
+				}
+				return decorateWithSuffix(base);
 		}
+	}
+
+	private String decorateWithSuffix(String base) {
+		if (suffix != null && (cursedKnown || !suffix.curse())) {
+			return suffix.name(base);
+		}
+		return base;
 	}
 	
 	@Override
@@ -443,9 +462,32 @@ abstract public class Weapon extends KindOfWeapon {
 				enchant();
 			}
 
+			//independent suffix roll: 10% non-curse, 5% curse
+			float suffixRoll = Random.Float();
+			if (suffixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
+				appendSuffix(Suffix.randomCurse());
+				cursed = true;
+			} else if (suffixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier())) {
+				appendSuffix(Suffix.random());
+			}
+
 		Random.popGenerator();
 
 		return this;
+	}
+
+	public Weapon appendSuffix( Suffix s ) {
+		suffix = s;
+		updateQuickslot();
+		return this;
+	}
+
+	@Override
+	public void activate( Char ch ) {
+		super.activate(ch);
+		if (suffix != null && ch instanceof Hero) {
+			suffix.activate((Hero) ch, this);
+		}
 	}
 	
 	public Weapon enchant( Enchantment ench ) {
@@ -505,8 +547,12 @@ abstract public class Weapon extends KindOfWeapon {
 		if (isEquipped(Dungeon.hero) && !hasCurseEnchant() && Dungeon.hero.buff(HolyWeapon.HolyWepBuff.class) != null
 				&& (Dungeon.hero.subClass != HeroSubClass.PALADIN || enchantment == null)){
 			return HOLY;
+		} else if (enchantment != null && (cursedKnown || !enchantment.curse())) {
+			return enchantment.glowing();
+		} else if (suffix != null && (cursedKnown || !suffix.curse())) {
+			return suffix.glowing();
 		} else {
-			return enchantment != null && (cursedKnown || !enchantment.curse()) ? enchantment.glowing() : null;
+			return null;
 		}
 	}
 
