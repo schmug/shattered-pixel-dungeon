@@ -64,6 +64,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.armor.glyphs.Stone;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.glyphs.Swiftness;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.glyphs.Thorns;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.glyphs.Viscosity;
+import com.shatteredpixel.shatteredpixeldungeon.items.armor.prefixes.Prefix;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.suffixes.Suffix;
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfArcana;
@@ -115,6 +116,7 @@ public class Armor extends EquipableItem {
 	public Augment augment = Augment.NONE;
 	
 	public Glyph glyph;
+	public Prefix prefix;
 	public Suffix suffix;
 	public boolean glyphHardened = false;
 	public boolean curseInfusionBonus = false;
@@ -135,6 +137,7 @@ public class Armor extends EquipableItem {
 	private static final String USES_LEFT_TO_ID = "uses_left_to_id";
 	private static final String AVAILABLE_USES  = "available_uses";
 	private static final String GLYPH			= "glyph";
+	private static final String PREFIX			= "prefix";
 	private static final String SUFFIX			= "suffix";
 	private static final String GLYPH_HARDENED	= "glyph_hardened";
 	private static final String CURSE_INFUSION_BONUS = "curse_infusion_bonus";
@@ -148,6 +151,7 @@ public class Armor extends EquipableItem {
 		bundle.put( USES_LEFT_TO_ID, usesLeftToID );
 		bundle.put( AVAILABLE_USES, availableUsesToID );
 		bundle.put( GLYPH, glyph );
+		bundle.put( PREFIX, prefix );
 		bundle.put( SUFFIX, suffix );
 		bundle.put( GLYPH_HARDENED, glyphHardened );
 		bundle.put( CURSE_INFUSION_BONUS, curseInfusionBonus );
@@ -162,6 +166,7 @@ public class Armor extends EquipableItem {
 		usesLeftToID = bundle.getInt( USES_LEFT_TO_ID );
 		availableUsesToID = bundle.getInt( AVAILABLE_USES );
 		inscribe((Glyph) bundle.get(GLYPH));
+		prefix = (Prefix) bundle.get(PREFIX);
 		suffix = (Suffix) bundle.get(SUFFIX);
 		glyphHardened = bundle.getBoolean(GLYPH_HARDENED);
 		curseInfusionBonus = bundle.getBoolean( CURSE_INFUSION_BONUS );
@@ -306,6 +311,9 @@ public class Armor extends EquipableItem {
 	@Override
 	public void activate(Char ch) {
 		if (seal != null) Buff.affect(ch, BrokenSeal.WarriorShield.class).setArmor(this);
+		if (prefix != null && ch instanceof Hero) {
+			prefix.activate((Hero) ch, this);
+		}
 		if (suffix != null && ch instanceof Hero) {
 			suffix.activate((Hero) ch, this);
 		}
@@ -381,7 +389,11 @@ public class Armor extends EquipableItem {
 	}
 
 	public final int DRMax(){
-		return DRMax(buffedLvl());
+		int dr = DRMax(buffedLvl());
+		if (prefix != null) {
+			dr = prefix.defenseFactor(dr);
+		}
+		return dr;
 	}
 
 	public int DRMax(int lvl){
@@ -398,7 +410,11 @@ public class Armor extends EquipableItem {
 	}
 
 	public final int DRMin(){
-		return DRMin(buffedLvl());
+		int dr = DRMin(buffedLvl());
+		if (prefix != null) {
+			dr = prefix.defenseFactor(dr);
+		}
+		return dr;
 	}
 
 	public int DRMin(int lvl){
@@ -435,7 +451,11 @@ public class Armor extends EquipableItem {
 			}
 		}
 		
-		return evasion + augment.evasionFactor(buffedLvl());
+		float ev = evasion + augment.evasionFactor(buffedLvl());
+		if (prefix != null) {
+			ev = prefix.evasionFactor(ev);
+		}
+		return ev;
 	}
 	
 	public float speedFactor( Char owner, float speed ){
@@ -587,14 +607,21 @@ public class Armor extends EquipableItem {
 	public String name() {
 		if (isEquipped(Dungeon.hero) && !hasCurseGlyph() && Dungeon.hero.buff(HolyWard.HolyArmBuff.class) != null
 			&& (Dungeon.hero.subClass != HeroSubClass.PALADIN || glyph == null)){
-				return decorateWithSuffix(Messages.get(HolyWard.class, "glyph_name", super.name()));
+				return decorateWithSuffix(decorateWithPrefix(Messages.get(HolyWard.class, "glyph_name", super.name())));
 			} else {
 				String base = super.name();
 				if (glyph != null && (cursedKnown || !glyph.curse())) {
 					base = glyph.name(base);
 				}
-				return decorateWithSuffix(base);
+				return decorateWithSuffix(decorateWithPrefix(base));
 		}
+	}
+
+	private String decorateWithPrefix(String base) {
+		if (prefix != null && (cursedKnown || !prefix.curse())) {
+			return prefix.name(base);
+		}
+		return base;
 	}
 
 	private String decorateWithSuffix(String base) {
@@ -711,8 +738,23 @@ public class Armor extends EquipableItem {
 				appendSuffix(Suffix.random());
 			}
 
+			//independent prefix roll: 12% non-curse, 5% curse
+			float prefixRoll = Random.Float();
+			if (prefixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
+				appendPrefix(Prefix.randomCurse());
+				cursed = true;
+			} else if (prefixRoll >= 1f - (0.12f * ParchmentScrap.enchantChanceMultiplier())) {
+				appendPrefix(Prefix.random());
+			}
+
 		Random.popGenerator();
 
+		return this;
+	}
+
+	public Armor appendPrefix( Prefix p ) {
+		prefix = p;
+		updateQuickslot();
 		return this;
 	}
 
@@ -825,6 +867,8 @@ public class Armor extends EquipableItem {
 			return HOLY;
 		} else if (glyph != null && (cursedKnown || !glyph.curse())) {
 			return glyph.glowing();
+		} else if (prefix != null && (cursedKnown || !prefix.curse())) {
+			return prefix.glowing();
 		} else if (suffix != null && (cursedKnown || !suffix.curse())) {
 			return suffix.glowing();
 		} else {
