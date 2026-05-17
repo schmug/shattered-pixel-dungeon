@@ -70,6 +70,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.MeleeWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.RunicBlade;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Scimitar;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.prefixes.Prefix;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.suffixes.Suffix;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
@@ -124,6 +125,7 @@ abstract public class Weapon extends KindOfWeapon {
 	protected float availableUsesToID = usesToID()/2f;
 	
 	public Enchantment enchantment;
+	public Prefix prefix;
 	public Suffix suffix;
 	public boolean enchantHardened = false;
 	public boolean curseInfusionBonus = false;
@@ -226,6 +228,7 @@ abstract public class Weapon extends KindOfWeapon {
 	private static final String USES_LEFT_TO_ID = "uses_left_to_id";
 	private static final String AVAILABLE_USES  = "available_uses";
 	private static final String ENCHANTMENT	    = "enchantment";
+	private static final String PREFIX			= "prefix";
 	private static final String SUFFIX			= "suffix";
 	private static final String ENCHANT_HARDENED = "enchant_hardened";
 	private static final String CURSE_INFUSION_BONUS = "curse_infusion_bonus";
@@ -238,6 +241,7 @@ abstract public class Weapon extends KindOfWeapon {
 		bundle.put( USES_LEFT_TO_ID, usesLeftToID );
 		bundle.put( AVAILABLE_USES, availableUsesToID );
 		bundle.put( ENCHANTMENT, enchantment );
+		bundle.put( PREFIX, prefix );
 		bundle.put( SUFFIX, suffix );
 		bundle.put( ENCHANT_HARDENED, enchantHardened );
 		bundle.put( CURSE_INFUSION_BONUS, curseInfusionBonus );
@@ -251,6 +255,7 @@ abstract public class Weapon extends KindOfWeapon {
 		usesLeftToID = bundle.getFloat( USES_LEFT_TO_ID );
 		availableUsesToID = bundle.getFloat( AVAILABLE_USES );
 		enchantment = (Enchantment)bundle.get( ENCHANTMENT );
+		prefix = (Prefix)bundle.get( PREFIX );
 		suffix = (Suffix)bundle.get( SUFFIX );
 		enchantHardened = bundle.getBoolean( ENCHANT_HARDENED );
 		curseInfusionBonus = bundle.getBoolean( CURSE_INFUSION_BONUS );
@@ -311,9 +316,22 @@ abstract public class Weapon extends KindOfWeapon {
 			ACC /= 5;
 		}
 
-		return encumbrance > 0 ? (float)(ACC / Math.pow( 1.5, encumbrance )) : ACC;
+		float acc = encumbrance > 0 ? (float)(ACC / Math.pow( 1.5, encumbrance )) : ACC;
+		if (prefix != null) {
+			acc = prefix.accuracyFactor(acc);
+		}
+		return acc;
 	}
-	
+
+	@Override
+	public int damageRoll( Char owner ) {
+		int damage = super.damageRoll( owner );
+		if (prefix != null) {
+			damage = prefix.damageFactor( damage );
+		}
+		return damage;
+	}
+
 	@Override
 	public float delayFactor( Char owner ) {
 		return baseDelay(owner) * (1f/speedMultiplier(owner));
@@ -417,14 +435,21 @@ abstract public class Weapon extends KindOfWeapon {
 	public String name() {
 		if (isEquipped(Dungeon.hero) && !hasCurseEnchant() && Dungeon.hero.buff(HolyWeapon.HolyWepBuff.class) != null
 			&& (Dungeon.hero.subClass != HeroSubClass.PALADIN || enchantment == null)){
-				return decorateWithSuffix(Messages.get(HolyWeapon.class, "ench_name", super.name()));
+				return decorateWithSuffix(decorateWithPrefix(Messages.get(HolyWeapon.class, "ench_name", super.name())));
 			} else {
 				String base = super.name();
 				if (enchantment != null && (cursedKnown || !enchantment.curse())) {
 					base = enchantment.name(base);
 				}
-				return decorateWithSuffix(base);
+				return decorateWithSuffix(decorateWithPrefix(base));
 		}
+	}
+
+	private String decorateWithPrefix(String base) {
+		if (prefix != null && (cursedKnown || !prefix.curse())) {
+			return prefix.name(base);
+		}
+		return base;
 	}
 
 	private String decorateWithSuffix(String base) {
@@ -471,8 +496,23 @@ abstract public class Weapon extends KindOfWeapon {
 				appendSuffix(Suffix.random());
 			}
 
+			//independent prefix roll: 10% non-curse, 5% curse
+			float prefixRoll = Random.Float();
+			if (prefixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
+				appendPrefix(Prefix.randomCurse());
+				cursed = true;
+			} else if (prefixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier())) {
+				appendPrefix(Prefix.random());
+			}
+
 		Random.popGenerator();
 
+		return this;
+	}
+
+	public Weapon appendPrefix( Prefix p ) {
+		prefix = p;
+		updateQuickslot();
 		return this;
 	}
 
@@ -485,6 +525,9 @@ abstract public class Weapon extends KindOfWeapon {
 	@Override
 	public void activate( Char ch ) {
 		super.activate(ch);
+		if (prefix != null && ch instanceof Hero) {
+			prefix.activate((Hero) ch, this);
+		}
 		if (suffix != null && ch instanceof Hero) {
 			suffix.activate((Hero) ch, this);
 		}
@@ -549,6 +592,8 @@ abstract public class Weapon extends KindOfWeapon {
 			return HOLY;
 		} else if (enchantment != null && (cursedKnown || !enchantment.curse())) {
 			return enchantment.glowing();
+		} else if (prefix != null && (cursedKnown || !prefix.curse())) {
+			return prefix.glowing();
 		} else if (suffix != null && (cursedKnown || !suffix.curse())) {
 			return suffix.glowing();
 		} else {
