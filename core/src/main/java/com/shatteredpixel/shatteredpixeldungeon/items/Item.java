@@ -510,6 +510,13 @@ public class Item implements Bundlable {
 		return null;
 	}
 
+	//Diablo-style quality band, DERIVED from affix count. Only weapons and
+	//armor carry affixes, so the base item has no quality (null). Recomputed
+	//on demand; never stored, so old saves need no migration.
+	public Quality quality() {
+		return null;
+	}
+
 	public Emitter emitter() { return null; }
 	
 	public String info() {

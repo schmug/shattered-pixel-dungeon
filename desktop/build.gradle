@@ -30,6 +30,12 @@ tasks.register('debug', JavaExec) {
         systemProperty 'spd.debugStart', System.getProperty('spd.debugStart')
     }
 
+    //forward the debug high-Magic-Find floor when set
+    //e.g. ./gradlew desktop:debug -Dspd.debugMagicFind=true (or =25)
+    if (System.getProperty('spd.debugMagicFind') != null) {
+        systemProperty 'spd.debugMagicFind', System.getProperty('spd.debugMagicFind')
+    }
+
     if (osName.contains('mac')) {
         jvmArgs '-XstartOnFirstThread'
     }

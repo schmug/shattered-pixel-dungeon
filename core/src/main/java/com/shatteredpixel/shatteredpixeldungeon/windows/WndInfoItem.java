@@ -23,6 +23,7 @@ package com.shatteredpixel.shatteredpixeldungeon.windows;
 
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.Quality;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.PixelScene;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ItemSlot;
 import com.shatteredpixel.shatteredpixeldungeon.ui.RenderedTextBlock;
@@ -92,6 +93,23 @@ public class WndInfoItem extends Window {
 			color = ItemSlot.UPGRADED;
 		} else if (item.levelKnown && item.level() < 0) {
 			color = ItemSlot.DEGRADED;
+		}
+
+		//Quality is the stronger "chase" signal, so for Magic/Rare/Exalted it
+		//overrides the level-based title colour (Common keeps the legacy
+		//upgraded/degraded behaviour). A cursed item whose curse is known
+		//keeps the distinct curse-purple instead of the positive-quality
+		//colour (spec decision 4); pre-cursedKnown it still shows the quality
+		//colour, consistent with how the cursed affix is hidden from the name
+		//but its presence is still counted. ItemSlot sub-text colouring
+		//(level/curse-infused/strength) is untouched.
+		Quality q = item.quality();
+		if (q != null && q != Quality.COMMON) {
+			if (item.cursedKnown && item.cursed) {
+				color = ItemSlot.CURSE_INFUSED;
+			} else {
+				color = q.color();
+			}
 		}
 
 		IconTitle titlebar = new IconTitle( item );

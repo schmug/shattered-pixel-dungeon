@@ -43,6 +43,7 @@ import com.shatteredpixel.shatteredpixeldungeon.effects.Speck;
 import com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal;
 import com.shatteredpixel.shatteredpixeldungeon.items.EquipableItem;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.Quality;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.curses.AntiEntropy;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.curses.Bulk;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.curses.Corrosion;
@@ -68,6 +69,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.armor.prefixes.Prefix;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.suffixes.Suffix;
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfArcana;
+import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfWealth;
 import com.shatteredpixel.shatteredpixeldungeon.items.trinkets.ParchmentScrap;
 import com.shatteredpixel.shatteredpixeldungeon.items.trinkets.ShardOfOblivion;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
@@ -687,8 +689,22 @@ public class Armor extends EquipableItem {
 		if (seal != null) {
 			info += "\n\n" + Messages.get(Armor.class, "seal_attached", seal.maxShield(tier, level()));
 		}
-		
+
+		Quality q = quality();
+		if (q != null && q != Quality.COMMON) {
+			info += "\n\n" + Messages.get(Quality.class, "info",
+					Messages.get(Quality.class, q.messageKey()));
+		}
+
 		return info;
+	}
+
+	//quality is DERIVED from the affix count (glyph + prefix + suffix); a
+	//cursed affix still counts toward the total per spec decision 4. Never
+	//bundled - recomputed here on every access, so old saves need no field.
+	@Override
+	public Quality quality() {
+		return Quality.of(glyph != null, prefix != null, suffix != null);
 	}
 
 	@Override
@@ -721,11 +737,20 @@ public class Armor extends EquipableItem {
 
 			//30% chance to be cursed
 			//15% chance to be inscribed
+			//Magic Find scales each POSITIVE affix window (curse windows are
+			//left alone - MF must not punish the player). With no Wealth buff
+			//on the hero - or no hero at all, e.g. shop/levelgen - this is the
+			//literal float 1.0f, so the affix RNG is bit-for-bit unchanged vs.
+			//pre-MF behaviour (acceptance criterion 3). Reading buffs consumes
+			//no RNG, so the roll sequence is unperturbed.
+			float magicFind = Dungeon.hero != null
+					? RingOfWealth.magicFindMultiplier(Dungeon.hero) : 1f;
+
 			float effectRoll = Random.Float();
 			if (effectRoll < 0.3f * ParchmentScrap.curseChanceMultiplier()) {
 				inscribe(Glyph.randomCurse());
 				cursed = true;
-			} else if (effectRoll >= 1f - (0.15f * ParchmentScrap.enchantChanceMultiplier())){
+			} else if (effectRoll >= 1f - (0.15f * ParchmentScrap.enchantChanceMultiplier() * magicFind)){
 				inscribe();
 			}
 
@@ -734,7 +759,7 @@ public class Armor extends EquipableItem {
 			if (suffixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
 				appendSuffix(Suffix.randomCurse());
 				cursed = true;
-			} else if (suffixRoll >= 1f - (0.12f * ParchmentScrap.enchantChanceMultiplier())) {
+			} else if (suffixRoll >= 1f - (0.12f * ParchmentScrap.enchantChanceMultiplier() * magicFind)) {
 				appendSuffix(Suffix.random());
 			}
 
@@ -743,7 +768,7 @@ public class Armor extends EquipableItem {
 			if (prefixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
 				appendPrefix(Prefix.randomCurse());
 				cursed = true;
-			} else if (prefixRoll >= 1f - (0.12f * ParchmentScrap.enchantChanceMultiplier())) {
+			} else if (prefixRoll >= 1f - (0.12f * ParchmentScrap.enchantChanceMultiplier() * magicFind)) {
 				appendPrefix(Prefix.random());
 			}
 
