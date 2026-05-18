@@ -116,7 +116,12 @@ public class RingOfWealth extends Ring {
 	//into the same bonus rather than compounding without bound. With no
 	//Wealth buff the bonus is 0 and the curve returns the literal float 1.0f.
 	public static float magicFindMultiplier( Char target ){
-		return MagicFind.multiplier( getBuffedBonus(target, Wealth.class) );
+		int bonus = getBuffedBonus(target, Wealth.class);
+		//debug-only override: take the larger of the real Wealth bonus and the
+		//spd.debugMagicFind floor so high MF can be tried without farming
+		//rings. Unset -> 0, so production behaviour is bit-for-bit unchanged.
+		bonus = Math.max( bonus, MagicFind.parseDebugBonus(System.getProperty("spd.debugMagicFind")) );
+		return MagicFind.multiplier( bonus );
 	}
 	
 	public static ArrayList<Item> tryForBonusDrop(Char target, int tries ){

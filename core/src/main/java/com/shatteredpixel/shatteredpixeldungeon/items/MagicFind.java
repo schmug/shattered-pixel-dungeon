@@ -57,4 +57,27 @@ public final class MagicFind {
 		float effective = MAX_BONUS * bonus / (bonus + SATURATION);
 		return 1f + effective;
 	}
+
+	//Debug-only: the spd.debugMagicFind system property forces a minimum
+	//Wealth-equivalent MF bonus so high Magic Find can be exercised without
+	//farming Rings of Wealth. Mirrors the spd.debugStart flag (PR #4).
+	//"true" -> a strong default; pure string parse kept here in the tested,
+	//Gdx-free class. Unset/blank/garbage -> 0, so the flag is strictly
+	//opt-in and the no-MF bit-for-bit guarantee is untouched in production.
+	public static final int DEBUG_DEFAULT_BONUS = 10;
+
+	public static int parseDebugBonus( String prop ) {
+		if (prop == null || prop.trim().isEmpty()) {
+			return 0;
+		}
+		prop = prop.trim();
+		if (prop.equalsIgnoreCase("true")) {
+			return DEBUG_DEFAULT_BONUS;
+		}
+		try {
+			return Math.max(0, Integer.parseInt(prop));
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
 }

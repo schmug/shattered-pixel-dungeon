@@ -155,4 +155,29 @@ public class MagicFindTest {
 		Random.popGenerator();
 		assertEquals(baseline, withoutMF);
 	}
+
+	@Test
+	public void parseDebugBonusHandlesEveryInputForm() {
+		// unset / blank -> disabled (0), so the debug flag is opt-in and the
+		// no-MF bit-for-bit guarantee holds when it is absent.
+		assertEquals(0, MagicFind.parseDebugBonus(null));
+		assertEquals(0, MagicFind.parseDebugBonus(""));
+		assertEquals(0, MagicFind.parseDebugBonus("   "));
+		// "true" -> a strong default so it's useful without picking a number
+		assertEquals(MagicFind.DEBUG_DEFAULT_BONUS, MagicFind.parseDebugBonus("true"));
+		assertEquals(MagicFind.DEBUG_DEFAULT_BONUS, MagicFind.parseDebugBonus(" TRUE "));
+		// explicit non-negative integer passes through
+		assertEquals(25, MagicFind.parseDebugBonus("25"));
+		assertEquals(0, MagicFind.parseDebugBonus("0"));
+		// negatives clamp to 0; garbage is ignored (disabled), never throws
+		assertEquals(0, MagicFind.parseDebugBonus("-7"));
+		assertEquals(0, MagicFind.parseDebugBonus("garbage"));
+	}
+
+	@Test
+	public void parseDebugBonusZeroIsStillBitForBitIdentity() {
+		// a disabled/garbage debug flag must collapse to the exact 1.0f path
+		float m = MagicFind.multiplier(MagicFind.parseDebugBonus(null));
+		assertEquals(Float.floatToRawIntBits(1f), Float.floatToRawIntBits(m));
+	}
 }
