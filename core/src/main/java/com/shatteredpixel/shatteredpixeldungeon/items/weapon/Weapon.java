@@ -39,8 +39,10 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.Smite;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.MirrorImage;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon;
+import com.shatteredpixel.shatteredpixeldungeon.items.Quality;
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfArcana;
+import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfWealth;
 import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfForce;
 import com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfFuror;
 import com.shatteredpixel.shatteredpixeldungeon.items.trinkets.ParchmentScrap;
@@ -458,7 +460,26 @@ abstract public class Weapon extends KindOfWeapon {
 		}
 		return base;
 	}
-	
+
+	//quality is DERIVED from the affix count (enchant + prefix + suffix); a
+	//cursed affix still counts toward the total per spec decision 4. Never
+	//bundled - recomputed here on every access, so old saves need no field.
+	@Override
+	public Quality quality() {
+		return Quality.of(enchantment != null, prefix != null, suffix != null);
+	}
+
+	@Override
+	public String info() {
+		String info = super.info();
+		Quality q = quality();
+		if (q != null && q != Quality.COMMON) {
+			info += "\n\n" + Messages.get(Quality.class, "info",
+					Messages.get(Quality.class, q.messageKey()));
+		}
+		return info;
+	}
+
 	@Override
 	public Item random() {
 		//+0: 75% (3/4)
@@ -479,11 +500,20 @@ abstract public class Weapon extends KindOfWeapon {
 
 			//30% chance to be cursed
 			//10% chance to be enchanted
+			//Magic Find scales each POSITIVE affix window (curse windows are
+			//left alone - MF must not punish the player). With no Wealth buff
+			//on the hero - or no hero at all, e.g. shop/levelgen - this is the
+			//literal float 1.0f, so the affix RNG is bit-for-bit unchanged vs.
+			//pre-MF behaviour (acceptance criterion 3). Reading buffs consumes
+			//no RNG, so the roll sequence is unperturbed.
+			float magicFind = Dungeon.hero != null
+					? RingOfWealth.magicFindMultiplier(Dungeon.hero) : 1f;
+
 			float effectRoll = Random.Float();
 			if (effectRoll < 0.3f * ParchmentScrap.curseChanceMultiplier()) {
 				enchant(Enchantment.randomCurse());
 				cursed = true;
-			} else if (effectRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier())){
+			} else if (effectRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier() * magicFind)){
 				enchant();
 			}
 
@@ -492,7 +522,7 @@ abstract public class Weapon extends KindOfWeapon {
 			if (suffixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
 				appendSuffix(Suffix.randomCurse());
 				cursed = true;
-			} else if (suffixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier())) {
+			} else if (suffixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier() * magicFind)) {
 				appendSuffix(Suffix.random());
 			}
 
@@ -501,7 +531,7 @@ abstract public class Weapon extends KindOfWeapon {
 			if (prefixRoll < 0.05f * ParchmentScrap.curseChanceMultiplier()) {
 				appendPrefix(Prefix.randomCurse());
 				cursed = true;
-			} else if (prefixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier())) {
+			} else if (prefixRoll >= 1f - (0.1f * ParchmentScrap.enchantChanceMultiplier() * magicFind)) {
 				appendPrefix(Prefix.random());
 			}
 
